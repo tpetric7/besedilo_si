@@ -1,0 +1,111 @@
+---
+title: "Render_scraping"
+author: "Teodor Petrič"
+date: "2022-04-15"
+# output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+https://bookdown.org/yihui/rmarkdown-cookbook/parameterized-reports.html
+https://docs.rstudio.com/connect/1.7.4/user/param-rmarkdown.html
+https://zsmith27.github.io/rmarkdown_crash-course/lesson-7-parameterized-reports.html
+https://stackoverflow.com/questions/68469470/render-reports-in-r-markdown
+
+## Bushido
+
+```{r}
+artist_name <- c("Bushido")
+
+album_name <- c('Sonny-black', 'Sonny-black-II', '7', 'Bushido', 'Mythos', 'Von-der-skyline-zum-bordstein-zuruck', 'Staatsfeind-nr-1', 'Electro-ghetto', 'Black-friday', 'Heavy-Metal-Payback', 'Carlo-cokxxx-nutten-4', 'King-of-kingz', 'Vom-Bordstein-bis-zur-Skyline', 'Demotape', 'Amyf', 'Carlo-cokxxx-nutten-3', 'Jenseits-von-gut-und-bose', 'Zeiten-andern-dich', 'Deutschland-gib-mir-ein-mic')
+```
+
+```{r}
+# album_name <- c('Carlo-cokxxx-nutten')
+```
+
+## Capital-bra
+
+```{r}
+artist_name <- "Capital-bra"
+
+album_name <- c("Makarov-komplex", "Kuku-bra", "Berlin-lebt", "Blyat", "Allein", "CB6", "Berlin-lebt-2", "CB7", "8")
+```
+
+## Udo Lindenberg
+
+```{r}
+artist_name <- "Udo-lindenberg"
+
+album_name <- c("Starker-als-die-zeit", "Radio-eriwahn-prasentiert-udo-lindenberg-panikorchester", "Bunte-republik-deutschland", "Panische-zeiten", "Odyssee", "Udopia", "Gotterhammerung", "Wendezeiten", "Alles-klar-auf-der-andrea-doria", "Hermine", "Feuerland", "Wo-ich-meinen-hut-hinhang", "Totales-paradies",  "Club-der-millionare", "Phonix", "Casanova", "Ich-will-dich-haben", "Benjamin", "Belcanto")
+
+```
+
+## Die Ärzte
+
+```{r}
+artist_name <- "die-arzte"
+
+album_name <- c("zu-schon-um-wahr-zu-sein", "Uns-gehts-prima", "Debil", "Im-schatten-der-arzte", "Die-arzte", "Ab-18", "Das-ist-nicht-die-ganze-wahrheit", "Nach-uns-die-Sintflut-live", "Die-arzte-fruher", "Die-bestie-in-menschengestalt", "Ab-23-mixe-b-seiten-und-anderer-unveroffentlichter-mull", "Quark-single", "Das-beste-von-kurz-nach-fruher-bis-jetze", "1-2-3-4-bullenstaat", "Planet-punk", "Ganz-fruher-und-ganz-neu", "Doktorspiele-heute-heute-bis-kurz-davor", "Doktorspiele-unzensiert-jetzt-erst-recht", "Rockgiganten-vs-strassenkoter", "Ein-schwein-namens-manner-single", "Ab-80-alles-uber-sex", "13", "Kindertage", "Satanische-pferde", "Runter-mit-den-spendierhosen-unsichtbarer", "5-6-7-8-bullenstaat", "Rock-n-roll-realschule", "Gerausch", "Jazz-ist-anders", "Auch", "Die-nacht-der-damonen-live", "Hell", "Ich-am-strand", "Achtung-bielefeld", "Abends-billy", "Dunkel", "Abends-skanken", "They-ve-given-me-schrott-die-outtakes")
+
+```
+
+## Rammstein
+
+```{r}
+artist_name <- "Rammstein"
+
+album_name <- c("Rammstein", "Made-in-germany-1995-2011", "Volkerball", "Sehnsucht", "Mutter", "Reise-reise", "Liebe-ist-fur-alle-da", "Rosenrot", "Herzeleid", "Xxi-raritaten", "Zeit", "Raritaten-1994-2012", "Ich-tu-dir-weh-ep", "Mein-land-ep", "Live-aus-Berlin", "Auslander-single")
+
+```
+
+## Kollegah
+
+```{r}
+artist_name <- "Kollegah"
+album_name <- "Hoodtape-volume-2"
+```
+
+## Alligatoah
+
+```{r}
+artist_name <- "Alligatoah"
+album_name <- "In-gottes-namen"
+```
+
+## Samy-deluxe
+
+```{r}
+artist_name <- "Samy-deluxe"
+album_name <- "Samtv-unplugged"
+```
+
+
+
+## artist + album
+
+```{r eval=FALSE, include=FALSE}
+render_one <- function(artist_name, album_name) {
+ # assuming the output format of input.Rmd is rds
+  rmarkdown::render(
+    'genius_auto.Rmd',
+   # output_file = paste0(
+   #   "data/", artist_name, "_", album_name, '.rds'),
+    params = list(artist_name = artist_name, album_name = album_name),
+    envir = parent.frame()
+  )
+}
+```
+
+## loop rendering
+
+```{r eval=FALSE, include=FALSE}
+for (artist in artist_name) {
+  for (album in album_name) {
+    render_one(artist, album)
+  }
+}
+```
+

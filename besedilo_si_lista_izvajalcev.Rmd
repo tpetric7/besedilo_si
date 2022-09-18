@@ -1,0 +1,359 @@
+---
+title: 'Scraping song lyrics from Besedilo.si (List of artists)'
+author: "Teodor Petrič"
+date: "2022-09-17 (update: 'r Sys.Date()')"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The workflow of this tutorial has been adapted from [*Niekler & Wiedemann*](https://github.com/tm4ss/tm4ss.github.io)'s tutorial on [scraping newspaper articles](https://github.com/tm4ss/tm4ss.github.io/blob/master/Tutorial_1_Web_scraping.Rmd) and modified to scrape the lyrics of selected songs or albums from the [Genius](https://genius.com/) portal. Our goal is to use the resulting collection of song lyrics for linguistic study. 
+
+This tutorial covers how to extract and process text data from web pages or other documents for later analysis.
+
+The automated download of HTML pages is called **Crawling**. The extraction of the textual data and/or metadata (for example, article date, headlines, author names, article text) from the HTML source code (or the DOM document object model of the website) is called **Scraping**. For these tasks, we use the package `rvest`.
+
+1. Download a single web page and extract its content
+2. Extract links from a overview page and extract song lyrics
+
+## Preparation
+
+```{r}
+library(tidyverse)
+require("rvest")
+```
+
+First, make sure your working directory is the data directory we provided for the exercises.
+
+```{r, message=FALSE, eval=F}
+# important option for text analysis
+options(stringsAsFactors = F)
+getwd()
+```
+
+
+## Crawl single webpage
+
+In a first exercise, we will download a single web page from "Der Spiegel" and extract text together with relevant metadata such as the article date. Let's define the URL of the article of interest and load the *rvest* package, which provides very useful functions for web crawling and scraping.
+
+```{r}
+url <- "https://www.besedilo.si/nipke/ona-bi"
+url <- "https://www.besedilo.si/siddharta/platina"
+```
+
+A convenient method to download and parse a webpage provides the function `read_html` which accepts a URL as a parameter. The function downloads the page and interprets the html source code as an HTML / XML object. 
+
+```{r}
+html_document <- read_html(url)
+```
+
+HTML / XML objects are a structured representation of HTML / XML source code, which allows to extract single elements (headlines e.g. `<h1>`, paragraphs `<p>`, links `<a>`, ...), their attributes (e.g. `<a href="http://...">`) or text wrapped in between elements (e.g. `<p>my text...</p>`). Elements can be extracted in XML objects with XPATH-expressions. 
+
+XPATH (see https://en.wikipedia.org/wiki/XPath) is a query language to select elements in XML-tree structures. 
+We use it to select the headline element from the HTML page.
+The following xpath expression queries for first-order-headline elements `h1`, anywhere in the tree `//` which fulfill a certain condition `[...]`, namely that the `class` attribute of the `h1` element must contain the value `content__headline`.
+
+The next expression uses R pipe operator %>%, which takes the input from the left side of the expression and passes it on to the function ion the right side as its first argument. The result of this function is either passed onto the next function, again via %>% or it is assigned to the variable, if it is the last operation in the pipe chain. Our pipe takes the `html_document` object, passes it to the html_node function, which extracts the first node fitting the given xpath expression. The resulting node object is passed to the `html_text` function which extracts the text wrapped in the `h1`-element.
+
+Instead of XPATH-expressions used in *Niekler & Wiedemann*'s tutorial, we will be using css style expressions (easier to read and write).
+
+Name of artist (izvajalec):
+
+```{r}
+artist_xpath <- ".izvajalec a"
+artist_text <- html_document %>%
+  html_node(artist_xpath) %>%
+  html_text(trim = T)
+
+cat(artist_text)
+
+```
+
+Let's see, what the title_text contains:
+
+```{r}
+title_xpath <- "h1"
+title_text <- html_document %>%
+  html_node(title_xpath) %>%
+  html_text(trim = T)
+
+cat(title_text)
+
+```
+
+The writer (avtor besedila) and the composer (avtor glasbe). 
+
+```{r}
+writer_xpath <- ".izvajalec"
+writer_text <- html_document %>%
+  html_node(writer_xpath) %>%
+  html_text(trim = T)
+
+cat(writer_text)
+
+```
+
+Now we modify the xpath expressions, to extract the article info, the paragraphs of the body text and the article date. Note that there are multiple paragraphs in the article. To extract not only the first, but all paragraphs we utilize the `html_nodes` function and glue the resulting single text vectors of each paragraph together with the `paste0` function.
+
+```{r}
+body_xpath <- "p"
+body_text <- html_document %>%
+  html_nodes(body_xpath) %>%
+  # html_text(trim = T) %>% 
+  html_text2() %>%
+  paste(collapse = "\n")
+
+cat(body_text)
+
+```
+
+```{r eval=T, echo=F}
+cat(substr(body_text, 0, 150))
+```
+
+
+```{r}
+youtube_xpath <- "div.video-container iframe"
+youtube_text <- html_document %>%
+  html_node(youtube_xpath)
+youtube_text <- str_extract_all(as.character(youtube_text), "(https://www.youtube.com/embed/[a-zA-Z_\\-\\d]+)") %>% unlist()
+```
+
+
+```{r}
+current_song <- as.data.frame(cbind(
+    artist_text, writer_text, title_text, body_text))
+current_song
+
+library(writexl)
+write_xlsx(current_song, 
+           paste0("data/besedilo_si_",artist_text,"_",title_text,".xlsx"))
+
+```
+
+
+The variables `title_text`, `intro_text`, `body_text` and `date_object` now contain the raw data for any subsequent text processing.
+
+
+## List of artists
+
+```{r}
+options(stringsAsFactors = F)
+library(tidyverse)
+require(rvest)
+```
+
+Other websites (found with keywords "besedila pesmi": 
+- http://slolyrics.com/izvajalci/   
+- https://www.lyric.si/ (> 2000 lyrics)
+
+
+Here we scrape lyrics from the website besedilo.si.    
+*Lista izvajalcev*: https://www.besedilo.si/lista-izvajalcev
+
+```{r}
+list_url <- paste0("https://www.besedilo.si/", "lista-izvajalcev/")
+
+html_document <- read_html(list_url)
+html_document
+```
+
+
+## Follow links
+
+Usually, we do not want download a single document, but a series of documents. In our second exercise, we want to download all Spiegel articles tagged with "Angela Merkel". Instead of a tag page, we could also be interested in downloading results of a site-search engine or any other link collection. The task is always two-fold: First, we download and parse the tag overview page to extract all links to articles of interest: 
+
+
+Second, we download and scrape each individual article page. For this, we extract all `href`-attributes from `a`-elements fitting a certain CSS-class. To select the right contents via XPATH-selectors, you need to investigate the HTML-structure of your specific page. Modern browsers such as Firefox and Chrome support you in that task by a function called "Inspect Element" (or similar), available through a right-click on the page element.
+
+```{r}
+links <- html_document %>%
+  html_nodes(".col-md-4 a") %>%
+  html_attr(name = "href")
+head(links)
+tail(links)
+```
+
+Now, `links` contains a list of `r length(links)` hyperlinks to single articles tagged with Angela Merkel. 
+
+
+## Pages
+
+But stop! There is not only one page of links to tagged articles. If you have a look on the page in your browser, the tag overview page has (several more) than 2 sub pages, accessible via a paging navigator at the bottom. By clicking on the second page, we see a different URL-structure, which now contains a link to a specific paging number. We can use that format to create links to all sub pages by combining the base URL with the page numbers.
+
+```{r}
+paging_urls <- links
+
+head(paging_urls, 3)
+tail(paging_urls, 3)
+```
+
+
+## Collect links
+
+Now we can iterate over all URLs of tag overview pages, to collect more/all links to articles tagged with coronavirus. We iterate with a for-loop over all URLs and append results from each single URL to a vector of all links.
+
+```{r}
+all_links <- NULL
+for (url in paging_urls) {
+  # download and parse single to overview page
+  html_document <- read_html(url)
+
+  # extract links to articles
+  links <- html_document %>%
+    html_nodes(".col-md-6 a") %>%
+    html_attr(name = "href")
+
+  # append links to vector of all links
+  all_links <- c(all_links, links)
+}
+
+head(all_links)
+tail(all_links)
+
+```
+
+
+## Scrape function
+
+An effective way of programming is to encapsulate repeatedly used code in a specific function. This function then can be called with specific parameters, process something and return a result. We use this here, to encapsulate the downloading and parsing of a Guardian article given a specific URL. The code is the same as in our exercise 1 above, only that we combine the extracted texts and metadata in a data.frame and wrap the entire process in a function-Block.
+
+```{r}
+artist_xpath <- ".izvajalec a"
+writer_xpath <- ".izvajalec"
+title_xpath <- "h1"
+body_xpath <- "p"
+youtube_xpath <- "div.video-container iframe"
+  
+scrape_besedilo_si <- function(url) {
+  
+  html_document <- read_html(url)
+  
+  artist_text <- html_document %>%
+    html_node(artist_xpath) %>%
+    html_text(trim = T)
+  
+  writer_text <- html_document %>%
+    html_node(writer_xpath) %>%
+    html_text(trim = T)
+  
+  title_text <- html_document %>%
+    html_node(title_xpath) %>%
+    html_text(trim = T)
+  
+  body_text <- html_document %>%
+    html_nodes(body_xpath) %>%
+    # html_text(trim = T) %>%
+    html_text2() %>% # preserves verse form
+    paste0(collapse = "\n")
+  
+  youtube_text <- html_document %>%
+    html_node(youtube_xpath)
+  youtube_text <- str_extract_all(as.character(youtube_text), "(https://www.youtube.com/embed/[a-zA-Z_\\-\\d]+)") %>% unlist()
+
+  artist_lyrics <- data.frame(
+    artist = artist_text,
+    writer = writer_text,
+    title = title_text,
+    text = body_text,
+    url = url, 
+    youtube = youtube_text
+    
+  )
+  
+  return(artist_lyrics)
+  
+}
+
+```
+
+
+## Reset dataframe
+
+```{r}
+all_lyrics <- NULL
+all_lyrics <- data.frame()
+
+```
+
+
+## Download pages
+
+Now we can use that function `scrape_guardian_article` in any other part of our script. For instance, we can loop over each of our collected links. We use a running variable i, taking values from 1 to `length(all_links)` to access the single links in `all_links` and write some progress output.
+
+```{r}
+starttime <- date()
+
+library(RCurl)
+for (i in 1:length(all_links)){
+  # skip non-existing html pages
+  if (url.exists(all_links[i])) {
+    # download from collected links
+    cat("Downloading", i, "of", 
+        length(all_links), "URL:", all_links[i], "\n")
+    lyrics <- scrape_besedilo_si(all_links[i])
+    # Append current song to the data.frame of all song lyrics
+    all_lyrics <- rbind(all_lyrics, lyrics)
+    Sys.sleep(0.1)
+  } 
+  else {
+    next}
+}
+
+finishtime <- date()
+
+starttime
+finishtime
+```
+
+## Table
+
+```{r eval=FALSE}
+all_lyrics <- all_lyrics %>% 
+  mutate(writer = case_when(
+    writer == "" | is.na(writer) ~ writer_name, 
+    TRUE ~ writer)) %>% 
+  mutate(artist = case_when(
+    artist == "" | is.na(artist) ~ artist_name, 
+    TRUE ~ artist))
+all_lyrics
+```
+
+## Occasional filtering
+
+```{r}
+# all_lyrics <- all_lyrics %>%
+# filter(str_detect(title, "Zeit"))
+
+# all_lyrics <- all_lyrics %>%
+#   mutate(released = "Released September 30, 2006") %>%
+#   unite(metadata2, c(released, metadata), sep = "\n") %>%
+#   rename(metadata = metadata2)
+
+all_lyrics <- all_lyrics %>%
+  mutate(youtube = str_replace(youtube, "embed/", "watch?v="))
+all_lyrics <- all_lyrics %>%
+  filter(text != "")
+```
+
+
+## Save all
+
+```{r}
+today = lubridate::today()
+
+saveRDS(all_lyrics, 
+           paste0("data/besedilo_si_",today,".rds"))
+write.csv(all_lyrics, 
+           paste0("data/besedilo_si_",today,".csv"))
+write.csv2(all_lyrics, 
+           paste0("data/besedilo_si_",today,
+                  "_utf8",".csv"), fileEncoding = "UTF-8")
+library(writexl)
+write_xlsx(all_lyrics, 
+           paste0("data/besedilo_si_",today,".xlsx"))
+```
+
+

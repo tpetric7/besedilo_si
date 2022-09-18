@@ -1,0 +1,252 @@
+---
+title: 'Scaping song lyrics from Genius'
+author: "Teodor Petrič"
+date: "2022-03-11 (update: 'r Sys.Date()')"
+# output: html_document
+params:
+  artist_name:
+    label: 'Artist Name:'
+    value: Bushido
+    input: select
+    choices:
+    - Bushido
+    - Capital-bra
+  album_name:
+    label: 'Album Name:'
+    value: Sonny-black
+    input: select
+    choices:
+    - Sonny-black
+    - Sonny-black-II
+    - 7
+    - Bushido
+    - Mythos
+    - Von-der-skyline-zum-bordstein-zuruck
+    - Staatsfeind-nr-1
+    - Electro-ghetto
+    - Black-friday
+    - Heavy-Metal-Payback
+    - Carlo-cokxxx-nutten-4
+    - King-of-kingz
+    - Vom-Bordstein-bis-zur-Skyline
+    - Demotape
+    - Carlo-cokxxx-nutten
+    - Amyf
+    - Carlo-cokxxx-nutten-3
+    - Jenseits-von-gut-und-bose
+    - Zeiten-andern-dich
+    - Deutschland-gib-mir-ein-mic
+    - Makarov-komplex
+    - Kuku-bra
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Artist name (*yaml* header):
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+readname = function()# Get the project name
+{
+  params$artist
+}
+artist_name=readname()
+
+readname = function()# Get the project name
+{
+  params$album
+}
+album_name=readname()
+
+artist_name; album_name
+
+```
+
+
+## Follow links
+
+```{r}
+options(stringsAsFactors = F)
+library(tidyverse)
+require(rvest)
+```
+
+
+```{r}
+url <- paste0("https://genius.com/albums/",artist_name,"/",album_name)
+
+html_document <- read_html(url)
+html_document
+```
+
+
+```{r}
+meta_xpath <- "div.metadata_unit"
+meta_text <- html_document %>%
+  html_nodes(meta_xpath) %>%
+  html_text(trim = T) %>%
+  paste0(collapse = "\n")
+cat(meta_text)
+
+```
+
+
+```{r}
+links <- html_document %>%
+  html_nodes("a.u-display_block") %>%
+  html_attr(name = "href")
+links
+
+```
+
+
+## Pages
+
+```{r}
+page_numbers <- 1:1
+
+# base_url <- paste0(url, "s")
+# paging_urls <- paste0(base_url, page_numbers, ".html#teaserPagination")
+
+paging_urls <- url
+
+head(paging_urls, 3)
+```
+
+
+## Collect links
+
+
+```{r}
+all_links <- NULL
+for (url in paging_urls) {
+  # download and parse single to overview page
+  html_document <- read_html(url)
+
+  # extract links to articles
+  links <- html_document %>%
+    html_nodes("a.u-display_block") %>%
+    html_attr(name = "href")
+
+  # append links to vector of all links
+  all_links <- c(all_links, links)
+}
+
+head(all_links)
+tail(all_links)
+
+```
+
+
+## Scrape function
+
+```{r}
+author_xpath <- "a.ayFeg"
+title_xpath <- "h1"
+album_xpath <- ".gyOWcZ .gHBbjJ"
+body_xpath <- ".jYfhrf"
+
+scrape_genius_album <- function(url) {
+  
+  html_document <- read_html(url)
+  
+  author_text <- html_document %>%
+    html_node(author_xpath) %>%
+    html_text(trim = T)
+  
+  title_text <- html_document %>%
+    html_node(title_xpath) %>%
+    html_text(trim = T)
+  
+  album_text <- html_document %>%
+    html_node(album_xpath) %>%
+    html_text(trim = T)
+  
+  body_text <- html_document %>%
+    html_nodes(body_xpath) %>%
+    # html_text(trim = T) %>%
+    html_text2() %>% # preserves verse form
+    paste0(collapse = "\n")
+  
+  album_lyrics <- data.frame(
+    artist = author_text,
+    title = title_text,
+    album = album_text,
+    text = body_text,
+    url = url
+    
+  )
+  
+  return(album_lyrics)
+  
+}
+
+```
+
+
+## Reset dataframe
+
+```{r}
+all_lyrics <- NULL
+all_lyrics <- data.frame()
+
+```
+
+
+## Download pages
+
+```{r}
+starttime <- date()
+
+library(RCurl)
+for (i in 1:length(all_links)){
+  # skip non-existing html pages
+  if (url.exists(all_links[i])) {
+    # download from collected links
+    cat("Downloading", i, "of", 
+        length(all_links), "URL:", all_links[i], "\n")
+    lyrics <- scrape_genius_album(all_links[i])
+    # Append current song to the data.frame of all song lyrics
+    all_lyrics <- rbind(all_lyrics, lyrics)
+    Sys.sleep(0.1)
+  } 
+  else {
+    next}
+}
+
+finishtime <- date()
+
+starttime
+finishtime
+```
+
+```{r}
+all_lyrics <- all_lyrics %>% 
+  mutate(album = case_when(
+    album == "" | is.na(album) ~ album_name, 
+    TRUE ~ album)) %>% 
+  mutate(album = str_replace_all(album, "-", " ")) %>% 
+  mutate(metadata = meta_text)
+all_lyrics
+```
+
+
+## Save all
+
+```{r}
+library(writexl)
+
+write_xlsx(all_lyrics, 
+           paste0("data/genius_",artist_name,"_",album_name,".xlsx"))
+saveRDS(all_lyrics, 
+           paste0("data/genius_",artist_name,"_",album_name,".rds"))
+write.csv(all_lyrics, 
+           paste0("data/genius_",artist_name,"_",album_name,".csv"))
+write.csv2(all_lyrics, 
+           paste0("data/genius_",artist_name,"_",album_name,
+                  "_utf8",".csv"), fileEncoding = "UTF-8")
+```
+

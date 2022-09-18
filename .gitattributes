@@ -1,0 +1,5 @@
+*.Rmarkdown linguist-detectable=true
+*.Rmd linguist-detectable=true
+*.rmd linguist-detectable=true
+*.css linguist-detectable=true
+*.html linguist-detectable=true
