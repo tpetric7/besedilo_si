@@ -61,6 +61,9 @@ Instead of XPATH-expressions used in *Niekler & Wiedemann*'s tutorial, we will b
 Name of artist (izvajalec):
 
 ```{r}
+# div id = "a" thus input css #a
+artist_xpath <- "#a h2"
+# in this case not necessary
 artist_xpath <- "h2"
 artist_text <- html_document %>%
   html_node(artist_xpath) %>%
@@ -73,8 +76,10 @@ cat(artist_text)
 Let's see, what the title_text contains:
 
 ```{r}
-title_xpath <- "p"
+# this works
 title_xpath <- "p a"
+# but class p is enough
+title_xpath <- "p"
 title_text <- html_document %>%
   html_node(title_xpath) %>%
   html_text(trim = T)
@@ -83,9 +88,25 @@ cat(title_text)
 
 ```
 
+Grabbing the link: 
+
+```{r}
+# Grabbing the link
+title_xpath <- "p a"
+title_link <- html_document %>%
+  html_node(title_xpath) %>%
+  html_attr("href")
+title_link
+
+```
+
+
 The writer (avtor besedila) and the composer (avtor glasbe). 
 
 ```{r}
+# use id + class
+writer_xpath <- "#b h1"
+# or just the h1 class
 writer_xpath <- "h1"
 writer_text <- html_document %>%
   html_node(writer_xpath) %>%
@@ -95,9 +116,22 @@ cat(writer_text)
 
 ```
 
+Who is the performer?
+
+```{r}
+performer_xpath <- "#bb p"
+performer_text <- html_document %>%
+  html_node(performer_xpath) %>%
+  html_text(trim = T)
+
+cat(performer_text)
+
+```
+
 Now we modify the xpath expressions, to extract the article info, the paragraphs of the body text and the article date. Note that there are multiple paragraphs in the article. To extract not only the first, but all paragraphs we utilize the `html_nodes` function and glue the resulting single text vectors of each paragraph together with the `paste0` function.
 
 ```{r}
+# div id = bb
 body_xpath <- "#bb div+ p"
 body_text <- html_document %>%
   html_nodes(body_xpath) %>%
@@ -115,14 +149,17 @@ cat(substr(body_text, 0, 150))
 
 
 ```{r}
-album_xpath <- "#bb a+ a"
-album_text <- html_document %>%
-  html_node(album_xpath) %>%
+newtitles_xpath <- "#a a+ a"
+newtitles_xpath <- "p:nth-child(8)"
+newtitles_text <- html_document %>%
+  html_node(newtitles_xpath) %>%
   # html_text(trim = T) %>% 
-  html_text2() %>%
-  paste(collapse = "\n")
+  # html_text2() %>%
+  paste(collapse = "\n") %>%
+  # html_attr("href")
+  str_squish()
 
-cat(album_text)
+cat(newtitles_text)
 
 ```
 
@@ -143,9 +180,9 @@ write_xlsx(current_song,
 The variables `title_text`, `intro_text`, `body_text` and `date_object` now contain the raw data for any subsequent text processing.
 
 
-## List of artists
+## Lists of artists' initials
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 options(stringsAsFactors = F)
 library(tidyverse)
 require(rvest)
@@ -166,60 +203,166 @@ html_document <- read_html(list_url)
 html_document
 ```
 
-
-## Follow links
-
-Usually, we do not want download a single document, but a series of documents. In our second exercise, we want to download all Spiegel articles tagged with "Angela Merkel". Instead of a tag page, we could also be interested in downloading results of a site-search engine or any other link collection. The task is always two-fold: First, we download and parse the tag overview page to extract all links to articles of interest: 
-
-
-Second, we download and scrape each individual article page. For this, we extract all `href`-attributes from `a`-elements fitting a certain CSS-class. To select the right contents via XPATH-selectors, you need to investigate the HTML-structure of your specific page. Modern browsers such as Firefox and Chrome support you in that task by a function called "Inspect Element" (or similar), available through a right-click on the page element.
+Collect the links on the starting page to find all artists. 
 
 ```{r}
+# div id = "b"
+links_xpath <- "#b h1+ p a"
+# or just
+links_xpath <- "h1+ p a"
 links <- html_document %>%
-  html_nodes("h1+ p a") %>%
+  html_nodes(links_xpath) %>%
   html_attr(name = "href")
-head(links)
-tail(links)
+
+# the full web addresses
+links <- paste0("http://slolyrics.com/", links)
+links <- links[-1]
+# 26 pages with artist names
+links
 ```
 
-Now, `links` contains a list of `r length(links)` hyperlinks to single articles tagged with Angela Merkel. 
+## Collect links of artist names
 
-
-## Pages
-
-But stop! There is not only one page of links to tagged articles. If you have a look on the page in your browser, the tag overview page has (several more) than 2 sub pages, accessible via a paging navigator at the bottom. By clicking on the second page, we see a different URL-structure, which now contains a link to a specific paging number. We can use that format to create links to all sub pages by combining the base URL with the page numbers.
+We open the first page filled with links to artist names beginning with the letter A. 
 
 ```{r}
-paging_urls <- links
+base_url <- "http://slolyrics.com/"
 
-head(paging_urls, 3)
-tail(paging_urls, 3)
-```
+# links[1] ist the page with letters
 
+artists_links_list <- list()
 
-## Collect links
-
-Now we can iterate over all URLs of tag overview pages, to collect more/all links to articles tagged with coronavirus. We iterate with a for-loop over all URLs and append results from each single URL to a vector of all links.
-
-```{r}
-all_links <- NULL
-for (url in paging_urls) {
-  # download and parse single to overview page
-  html_document <- read_html(url)
-
-  # extract links to articles
-  links <- html_document %>%
-    html_nodes(".col-md-6 a") %>%
+tictoc::tic()
+for(i in 1:length(links)){
+  # read page with artist name beginning with a
+  html_document <- read_html(links[i])
+  
+  artists_xpath <- "#b p a"
+  # more accurate
+  artists_xpath <- "h1+ p a"
+  artists_links <- html_document %>%
+    html_nodes(artists_xpath) %>%
     html_attr(name = "href")
-
-  # append links to vector of all links
-  all_links <- c(all_links, links)
+  
+  # the full web addresses
+  artists_links <- paste0(base_url, artists_links)
+  artists_links_list <- append(artists_links_list, artists_links)
+  artists_links_list <- unlist(artists_links_list)
 }
 
-head(all_links)
-tail(all_links)
+# 26 pages with artist names
+head(artists_links_list)
+tail(artists_links_list)
+length(artists_links_list)
+tictoc::toc()
 
 ```
+
+## How many views? 
+
+This took me 1195.69 sec for 59435 rows of song titles on my laptop. 
+
+```{r}
+all_views <- NULL
+
+tictoc::tic()
+for(i in 1:length(artists_links_list)){
+artist_page <- read_html(artists_links_list[i])
+artist <- str_split(artists_links_list[i], "/") %>% 
+  unlist() %>% .[4] %>% str_replace("-", " ")
+
+# ogledi_xpath <- "#b p #text"
+ogledi_xpath <- "p:nth-child(3)"
+ogledi_text <- artist_page %>%
+  html_node(ogledi_xpath) %>%
+  html_text2() %>% 
+  str_squish()
+
+ogledi_text <- ogledi_text %>% 
+  tolower() %>% 
+  str_split(pattern = "ogledov") %>% 
+  unlist() %>% 
+  str_squish()
+
+ogledi_text <- ogledi_text %>% 
+  as_tibble() %>% 
+  filter(value != "") %>% 
+  # separate column from the end !!! (sep = -4)
+  separate(value, into = c('value', 'views'), 
+           sep = -4, convert = TRUE) %>% 
+  mutate(views = str_remove(views, "- ")) %>% 
+  mutate(views = parse_number(views)) %>% 
+  mutate(value = str_remove(value, "- $")) %>% 
+  mutate(value = str_remove(value, "-$")) %>% 
+  mutate(value = str_replace(value, " - ", "_")) %>% 
+  separate(value, 
+           into = c("artist", "title"), sep = "_", 
+           extra = "merge", fill = "right")
+
+all_views <- bind_rows(all_views, ogledi_text)
+  
+}
+
+tictoc::toc()
+
+```
+
+Quite some song titles are duplicated or trippled because different users have uploaded their separate versions. 
+
+```{r}
+# today <- lubridate::today()
+# saveRDS(all_views, paste0("data/slolyrics_views",today,".rds"))
+```
+
+```{r}
+# all_views <- read_rds("data/slolyrics_views2022-10-04.rds")
+```
+
+
+## Collect song links
+
+Now, we have got all artists and we have to fetch the pages with the lyrics. This takes about 1240.65 seconds (more than 20 minutes) on my laptop. We have collected 59436 song links.  
+
+```{r}
+songs_links_list <- list()
+
+tictoc::tic()
+for(i in 1:length(artists_links_list)){
+  # read page with artist name beginning with a
+  html_document <- read_html(artists_links_list[i])
+
+  # song_xpath <- "#b p a"
+  # more accurate
+  song_xpath <- "#b a+ a"
+  song_links <- html_document %>%
+    html_nodes(song_xpath) %>%
+    html_attr(name = "href")
+  
+    # the full web addresses
+  song_links <- paste0(base_url, song_links)
+  songs_links_list <- c(songs_links_list, song_links)
+
+}
+
+songs_links_list <- unlist(songs_links_list)
+tictoc::toc()
+
+head(songs_links_list)
+tail(songs_links_list)
+length(songs_links_list)
+```
+
+```{r}
+# saveRDS(songs_links_list, "data/slolyrics_songs_links_list.rds")
+# saveRDS(songs_links_list, "data/slolyrics_songs_links_list.RData")
+```
+
+```{r}
+# songs_links_list <- 
+#   read_rds("data/slolyrics_songs_links_list.rds")
+```
+
+Now, `songs_links_list` contains a list of `r length(songs_links_list)` hyperlinks to single song lyrics. 
 
 
 ## Scrape function
@@ -227,13 +370,14 @@ tail(all_links)
 An effective way of programming is to encapsulate repeatedly used code in a specific function. This function then can be called with specific parameters, process something and return a result. We use this here, to encapsulate the downloading and parsing of a Guardian article given a specific URL. The code is the same as in our exercise 1 above, only that we combine the extracted texts and metadata in a data.frame and wrap the entire process in a function-Block.
 
 ```{r}
-artist_xpath <- ".izvajalec a"
-writer_xpath <- ".izvajalec"
-title_xpath <- "h1"
-body_xpath <- "p"
-youtube_xpath <- "div.video-container iframe"
-  
-scrape_besedilo_si <- function(url) {
+artist_xpath <- "h2" # artist name on the left pane
+title_xpath <- "p a" # first title on the left pane
+writer_xpath <- "h1" # artist + title
+body_xpath <- "#bb div+ p"
+# youtube_xpath <- "div.video-container iframe"
+
+url <- "http://slolyrics.com/a/6-oclock/"
+scrape_slolyrics <- function(url) {
   
   html_document <- read_html(url)
   
@@ -255,17 +399,17 @@ scrape_besedilo_si <- function(url) {
     html_text2() %>% # preserves verse form
     paste0(collapse = "\n")
   
-  youtube_text <- html_document %>%
-    html_node(youtube_xpath)
-  youtube_text <- str_extract_all(as.character(youtube_text), "(https://www.youtube.com/embed/[a-zA-Z_\\-\\d]+)") %>% unlist()
-
+  # youtube_text <- html_document %>%
+  #   html_node(youtube_xpath)
+  # youtube_text <- str_extract_all(as.character(youtube_text), "(https://www.youtube.com/embed/[a-zA-Z_\\-\\d]+)") %>% unlist()
+  
   artist_lyrics <- data.frame(
     artist = artist_text,
     writer = writer_text,
     title = title_text,
     text = body_text,
-    url = url, 
-    youtube = youtube_text
+    # youtube = youtube_text,
+    url = url 
     
   )
   
@@ -287,19 +431,21 @@ all_lyrics <- data.frame()
 
 ## Download pages
 
-Now we can use that function `scrape_guardian_article` in any other part of our script. For instance, we can loop over each of our collected links. We use a running variable i, taking values from 1 to `length(all_links)` to access the single links in `all_links` and write some progress output.
+Now we can use that function `scrape_slolyrics` in any other part of our script. For instance, we can loop over each of our collected links. We use a running variable i, taking values from 1 to `length(songs_links_list)` to access the single links in `songs_links_list` and write some progress output.
+
+Last song:  
+The second download (from song 22544 to 59436) took my laptop 13297.55 seconds.
 
 ```{r}
-starttime <- date()
-
+tictoc::tic()
 library(RCurl)
-for (i in 1:length(all_links)){
+for (i in 1:length(songs_links_list)){
   # skip non-existing html pages
-  if (url.exists(all_links[i])) {
+  if (url.exists(songs_links_list[i])) {
     # download from collected links
     cat("Downloading", i, "of", 
-        length(all_links), "URL:", all_links[i], "\n")
-    lyrics <- scrape_besedilo_si(all_links[i])
+        length(songs_links_list), "URL:", songs_links_list[i], "\n")
+    lyrics <- scrape_slolyrics(songs_links_list[i])
     # Append current song to the data.frame of all song lyrics
     all_lyrics <- rbind(all_lyrics, lyrics)
     Sys.sleep(0.1)
@@ -308,10 +454,7 @@ for (i in 1:length(all_links)){
     next}
 }
 
-finishtime <- date()
-
-starttime
-finishtime
+tictoc::toc()
 ```
 
 ## Table
@@ -329,7 +472,7 @@ all_lyrics
 
 ## Occasional filtering
 
-```{r}
+```{r eval=FALSE}
 # all_lyrics <- all_lyrics %>%
 # filter(str_detect(title, "Zeit"))
 
@@ -351,15 +494,53 @@ all_lyrics <- all_lyrics %>%
 today = lubridate::today()
 
 saveRDS(all_lyrics, 
-           paste0("data/besedilo_si_",today,".rds"))
+           paste0("data/slolyrics_",today,".rds"))
 write.csv(all_lyrics, 
-           paste0("data/besedilo_si_",today,".csv"))
+           paste0("data/slolyrics_",today,".csv"))
 write.csv2(all_lyrics, 
-           paste0("data/besedilo_si_",today,
+           paste0("data/slolyrics_",today,
                   "_utf8",".csv"), fileEncoding = "UTF-8")
 library(writexl)
 write_xlsx(all_lyrics, 
-           paste0("data/besedilo_si_",today,".xlsx"))
+           paste0("data/slolyrics_",today,".xlsx"))
 ```
 
+## Read and join
+
+```{r eval=FALSE}
+one <- read_rds("data/slolyrics_2022-10-05.rds")
+two <- read_rds("data/slolyrics_2022-10-06.rds")
+slolyrics <- bind_rows(one, two)
+```
+
+```{r eval=FALSE}
+slolyrics_joined <- slolyrics %>% 
+  select(-title) %>% 
+  mutate(writer = str_replace(writer, " - ", "_")) %>% 
+  separate(writer, into = c("izvajalec", "title"), sep = "_",
+           extra = "merge") %>% 
+  select(-izvajalec)
+```
+
+```{r eval=FALSE}
+slolyrics_joined %>% 
+  count(artist, sort = T) %>% rmarkdown::paged_table()
+```
+
+## Save joined
+
+```{r eval=FALSE}
+today = lubridate::today()
+
+saveRDS(slolyrics_joined, 
+           paste0("data/slolyrics_joined_",today,".rds"))
+write.csv(slolyrics_joined, 
+           paste0("data/slolyrics_joined_",today,".csv"))
+write.csv2(slolyrics_joined, 
+           paste0("data/slolyrics_joined_",today,
+                  "_utf8",".csv"), fileEncoding = "UTF-8")
+library(writexl)
+write_xlsx(slolyrics_joined, 
+           paste0("data/slolyrics_joined_",today,".xlsx"))
+```
 
